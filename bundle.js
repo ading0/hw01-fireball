@@ -9922,7 +9922,7 @@ class OpenGLRenderer {
     clear() {
         _globals__WEBPACK_IMPORTED_MODULE_0__.gl.clear(_globals__WEBPACK_IMPORTED_MODULE_0__.gl.COLOR_BUFFER_BIT | _globals__WEBPACK_IMPORTED_MODULE_0__.gl.DEPTH_BUFFER_BIT);
     }
-    render(camera, prog, time, drawables) {
+    render(camera, prog, time, timeScale, plumeHeight, colorGain, drawables) {
         let model = gl_matrix__WEBPACK_IMPORTED_MODULE_1__.create();
         let viewProj = gl_matrix__WEBPACK_IMPORTED_MODULE_1__.create();
         gl_matrix__WEBPACK_IMPORTED_MODULE_1__.identity(model);
@@ -9930,6 +9930,9 @@ class OpenGLRenderer {
         prog.setModelMatrix(model);
         prog.setViewProjMatrix(viewProj);
         prog.setTime(time);
+        prog.setTimeScale(timeScale);
+        prog.setPlumeHeight(plumeHeight);
+        prog.setColorGain(colorGain);
         for (let drawable of drawables) {
             prog.draw(drawable);
         }
@@ -9986,6 +9989,9 @@ class ShaderProgram {
         this.unifModelInvTr = _globals__WEBPACK_IMPORTED_MODULE_0__.gl.getUniformLocation(this.prog, "u_ModelInvTr");
         this.unifViewProj = _globals__WEBPACK_IMPORTED_MODULE_0__.gl.getUniformLocation(this.prog, "u_ViewProj");
         this.unifTime = _globals__WEBPACK_IMPORTED_MODULE_0__.gl.getUniformLocation(this.prog, "u_Time");
+        this.unifTimeScale = _globals__WEBPACK_IMPORTED_MODULE_0__.gl.getUniformLocation(this.prog, "u_TimeScale");
+        this.unifPlumeHeight = _globals__WEBPACK_IMPORTED_MODULE_0__.gl.getUniformLocation(this.prog, "u_PlumeHeight");
+        this.unifColorGain = _globals__WEBPACK_IMPORTED_MODULE_0__.gl.getUniformLocation(this.prog, "u_ColorGain");
     }
     use() {
         if (activeProgram !== this.prog) {
@@ -10015,6 +10021,24 @@ class ShaderProgram {
         this.use();
         if (this.unifTime !== -1) {
             _globals__WEBPACK_IMPORTED_MODULE_0__.gl.uniform1f(this.unifTime, time);
+        }
+    }
+    setTimeScale(timeScale) {
+        this.use();
+        if (this.unifTimeScale !== -1) {
+            _globals__WEBPACK_IMPORTED_MODULE_0__.gl.uniform1f(this.unifTimeScale, timeScale);
+        }
+    }
+    setColorGain(gain) {
+        this.use();
+        if (this.unifColorGain !== -1) {
+            _globals__WEBPACK_IMPORTED_MODULE_0__.gl.uniform1f(this.unifColorGain, gain);
+        }
+    }
+    setPlumeHeight(h) {
+        this.use();
+        if (this.unifPlumeHeight !== -1) {
+            _globals__WEBPACK_IMPORTED_MODULE_0__.gl.uniform1f(this.unifPlumeHeight, h);
         }
     }
     draw(d) {
@@ -10629,7 +10653,7 @@ function createTurntableController(options) {
   \******************************************/
 /***/ ((module) => {
 
-module.exports = "#version 300 es\r\n\r\n// This is a fragment shader. If you've opened this file first, please\r\n// open and read lambert.vert.glsl before reading on.\r\n// Unlike the vertex shader, the fragment shader actually does compute\r\n// the shading of geometry. For every pixel in your program's output\r\n// screen, the fragment shader is run for every bit of geometry that\r\n// particular pixel overlaps. By implicitly interpolating the position\r\n// data passed into the fragment shader by the vertex shader, the fragment shader\r\n// can compute what color to apply to its pixel based on things like vertex\r\n// position, light position, and vertex color.\r\nprecision highp float;\r\n\r\nuniform float u_Time;  // time in seconds\r\n\r\n// These are the interpolated values out of the rasterizer, so you can't know\r\n// their specific values without knowing the vertices that contributed to them\r\nin vec4 fs_Nor;\r\nin vec4 fs_LightVec;\r\nin vec4 fs_Col;\r\nin vec3 fs_Displacement;\r\n\r\nout vec4 out_Col; // This is the final output color that you will see on your\r\n                  // screen for the pixel that is currently being processed.\r\n\r\nfloat bias(float b, float t)\r\n{\r\n    return pow(t, log(b) / log(0.5f));\r\n}\r\n\r\nfloat gain(float g, float t)\r\n{\r\n    if (t < 0.5)\r\n    {\r\n        return bias(1.0 - g, 2.0 * t) / 2.0;\r\n    }\r\n    else\r\n    {\r\n        return 1.0 - bias(1.0 - g, 2.0 - 2.0 * t) / 2.0;\r\n    }\r\n}\r\n\r\n// v from 0 to 1\r\nvec3 mapColor(float v)\r\n{\r\n    v = clamp(v, 0.0, 1.0);\r\n    v = gain(0.7, v);\r\n\r\n    if (v < 0.8)\r\n    {\r\n        float t = clamp(v / 0.8, 0.0, 1.0);\r\n\r\n        vec3 red = vec3(1.0, 0.165, 0.02);\r\n        vec3 orange = vec3(1.0, 0.647, 0.0);\r\n\r\n        return red * (1.0 - t) + orange * t;\r\n    }\r\n    else\r\n    {\r\n        float t = clamp((v - 0.8) / 0.2, 0.0, 1.0);\r\n        vec3 orange = vec3(1.0, 0.647, 0.0);\r\n        vec3 yellow = vec3(1.0, 0.9, 0.1);\r\n\r\n        return orange * (1.0 - t) + yellow * t;\r\n    }\r\n\r\n    return vec3(0.5);\r\n}\r\n\r\nvoid main()\r\n{\r\n    // Material base color (before shading)\r\n    vec4 diffuseColor = fs_Col;\r\n\r\n    float displDot = dot(normalize(fs_Displacement), normalize(fs_Nor.xyz));\r\n    float v = 0.5 * (displDot + 1.0);\r\n\r\n    diffuseColor.xyz = mapColor(v);\r\n\r\n    // Calculate the diffuse term for Lambert shading\r\n    float diffuseTerm = dot(normalize(fs_Nor), normalize(fs_LightVec));\r\n    // Avoid negative lighting values\r\n    // diffuseTerm = clamp(diffuseTerm, 0, 1);\r\n\r\n    float ambientTerm = 0.2;\r\n\r\n    float lightIntensity = diffuseTerm + ambientTerm;   //Add a small float value to the color multiplier\r\n                                                        //to simulate ambient lighting. This ensures that faces that are not\r\n                                                        //lit by our point light are not completely black.\r\n\r\n    // Compute final shaded color\r\n    out_Col = vec4(diffuseColor.rgb * lightIntensity, diffuseColor.a);\r\n}\r\n"
+module.exports = "#version 300 es\r\n\r\n// This is a fragment shader. If you've opened this file first, please\r\n// open and read lambert.vert.glsl before reading on.\r\n// Unlike the vertex shader, the fragment shader actually does compute\r\n// the shading of geometry. For every pixel in your program's output\r\n// screen, the fragment shader is run for every bit of geometry that\r\n// particular pixel overlaps. By implicitly interpolating the position\r\n// data passed into the fragment shader by the vertex shader, the fragment shader\r\n// can compute what color to apply to its pixel based on things like vertex\r\n// position, light position, and vertex color.\r\nprecision highp float;\r\n\r\nuniform float u_Time;  // time in seconds\r\nuniform float u_ColorGain;\r\n\r\n// These are the interpolated values out of the rasterizer, so you can't know\r\n// their specific values without knowing the vertices that contributed to them\r\nin vec4 fs_Nor;\r\nin vec4 fs_LightVec;\r\nin vec4 fs_Col;\r\nin vec3 fs_Displacement;\r\n\r\nout vec4 out_Col; // This is the final output color that you will see on your\r\n                  // screen for the pixel that is currently being processed.\r\n\r\nfloat bias(float b, float t)\r\n{\r\n    return pow(t, log(b) / log(0.5f));\r\n}\r\n\r\nfloat gain(float g, float t)\r\n{\r\n    if (t < 0.5)\r\n    {\r\n        return bias(1.0 - g, 2.0 * t) / 2.0;\r\n    }\r\n    else\r\n    {\r\n        return 1.0 - bias(1.0 - g, 2.0 - 2.0 * t) / 2.0;\r\n    }\r\n}\r\n\r\n// v from 0 to 1\r\nvec3 mapColor(float v)\r\n{\r\n    v = clamp(v, 0.0, 1.0);\r\n    v = gain(u_ColorGain, v);\r\n\r\n    if (v < 0.8)\r\n    {\r\n        float t = clamp(v / 0.8, 0.0, 1.0);\r\n\r\n        vec3 red = vec3(1.0, 0.165, 0.02);\r\n        vec3 orange = vec3(1.0, 0.647, 0.0);\r\n\r\n        return red * (1.0 - t) + orange * t;\r\n    }\r\n    else\r\n    {\r\n        float t = clamp((v - 0.8) / 0.2, 0.0, 1.0);\r\n        vec3 orange = vec3(1.0, 0.647, 0.0);\r\n        vec3 yellow = vec3(1.0, 0.9, 0.1);\r\n\r\n        return orange * (1.0 - t) + yellow * t;\r\n    }\r\n\r\n    return vec3(0.5);\r\n}\r\n\r\nvoid main()\r\n{\r\n    // Material base color (before shading)\r\n    vec4 diffuseColor = fs_Col;\r\n\r\n    float displDot = dot(normalize(fs_Displacement), normalize(fs_Nor.xyz));\r\n    float v = 0.5 * (displDot + 1.0);\r\n\r\n    diffuseColor.xyz = mapColor(v);\r\n\r\n    // Calculate the diffuse term for Lambert shading\r\n    float diffuseTerm = dot(normalize(fs_Nor), normalize(fs_LightVec));\r\n    // Avoid negative lighting values\r\n    // diffuseTerm = clamp(diffuseTerm, 0, 1);\r\n\r\n    float ambientTerm = 0.2;\r\n\r\n    float lightIntensity = diffuseTerm + ambientTerm;   //Add a small float value to the color multiplier\r\n                                                        //to simulate ambient lighting. This ensures that faces that are not\r\n                                                        //lit by our point light are not completely black.\r\n\r\n    // Compute final shaded color\r\n    out_Col = vec4(diffuseColor.rgb * lightIntensity, diffuseColor.a);\r\n}\r\n"
 
 /***/ }),
 
@@ -10639,7 +10663,7 @@ module.exports = "#version 300 es\r\n\r\n// This is a fragment shader. If you've
   \******************************************/
 /***/ ((module) => {
 
-module.exports = "#version 300 es\r\n\r\n//This is a vertex shader. While it is called a \"shader\" due to outdated conventions, this file\r\n//is used to apply matrix transformations to the arrays of vertex data passed to it.\r\n//Since this code is run on your GPU, each vertex is transformed simultaneously.\r\n//If it were run on your CPU, each vertex would have to be processed in a FOR loop, one at a time.\r\n//This simultaneous transformation allows your program to run much faster, especially when rendering\r\n//geometry with millions of vertices.\r\n\r\nuniform mat4 u_Model;       // The matrix that defines the transformation of the\r\n                            // object we're rendering. In this assignment,\r\n                            // this will be the result of traversing your scene graph.\r\n\r\nuniform mat4 u_ModelInvTr;  // The inverse transpose of the model matrix.\r\n                            // This allows us to transform the object's normals properly\r\n                            // if the object has been non-uniformly scaled.\r\n\r\nuniform mat4 u_ViewProj;    // The matrix that defines the camera's transformation.\r\n                            // We've written a static matrix for you to use for HW2,\r\n                            // but in HW3 you'll have to generate one yourself\r\n\r\nuniform float u_Time;  // time in seconds\r\n\r\nin vec4 vs_Pos;             // The array of vertex positions passed to the shader\r\n\r\nin vec4 vs_Nor;             // The array of vertex normals passed to the shader\r\n\r\nin vec4 vs_Col;             // The array of vertex colors passed to the shader.\r\n\r\nout vec4 fs_Nor;            // The array of normals that has been transformed by u_ModelInvTr. This is implicitly passed to the fragment shader.\r\nout vec4 fs_LightVec;       // The direction in which our virtual light lies, relative to each vertex. This is implicitly passed to the fragment shader.\r\nout vec4 fs_Col;            // The color of each vertex. This is implicitly passed to the fragment shader.\r\n\r\nout vec3 fs_Displacement;   // displaced vertex\r\n\r\nconst vec4 lightPos = vec4(5, 5, 3, 1); //The position of our virtual light, which is used to compute the shading of\r\n                                        //the geometry in the fragment shader.\r\n\r\nvec3 getCoarseDisplacement(vec3 pos, vec3 dir)\r\n{\r\n    float displ = 0.0;\r\n    displ += sin(u_Time * 2.0 + pos.x * 10.7) * 0.06;\r\n    displ += sin(u_Time * 0.9 + pos.y * 3.5 + 2.1) * 0.05;\r\n    displ += sin(u_Time * (-2.5) + pos.z * 12.1 + 0.8) * 0.053;\r\n\r\n    return displ * dir;\r\n}\r\n\r\nvec3 getFineDisplacement(vec3 pos, vec3 dir)\r\n{\r\n    float displ = 0.0;\r\n\r\n    int nOctaves = 4;\r\n\r\n    float freqMult = 1.8;    \r\n    float ampMult = 0.7;\r\n    \r\n    float phaseChange = 0.5;\r\n\r\n    float phase = 0.0;\r\n    float amp = 0.01;\r\n    float posFreq = 50.0;\r\n    float timeFreq = 10.0;\r\n\r\n    for (int i = 0; i < nOctaves; i++)\r\n    {\r\n        displ += amp * sin(phase + 0.1 + pos.x * posFreq * 0.9);\r\n        displ += amp * sin(phase + 0.4 + pos.y * posFreq * 0.7);\r\n        displ += amp * sin(phase + 0.9 + pos.z * posFreq * 1.1);\r\n        \r\n        amp *= ampMult;\r\n        timeFreq *= freqMult;\r\n        posFreq *= freqMult;\r\n        phase += phaseChange;\r\n    }\r\n\r\n    return displ * dir;\r\n}\r\n\r\nfloat triangleWave(float x)\r\n{\r\n    return abs(mod(x, 2.0) - 1.0);\r\n}\r\n\r\nfloat bias(float b, float t)\r\n{\r\n    return pow(t, log(b) / log(0.5f));\r\n}\r\n\r\nvec3 getPlumeDisplacement(vec3 refPos)\r\n{\r\n    if (refPos.y < 1.5)\r\n        return vec3(0.0);\r\n\r\n    float s = 0.0;\r\n    s += triangleWave(0.3 + u_Time * 0.21 + refPos.x * 48.0 + refPos.z * 53.1);\r\n    s += triangleWave(0.9 + u_Time * 0.19 + refPos.x * 57.2 - refPos.z * 42.9);\r\n    s += triangleWave(0.2 + u_Time * 0.1 - refPos.x * 29.9);\r\n    s += triangleWave(1.0 + u_Time * 0.15 + refPos.z * 61.0);\r\n\r\n    float h = s / 4.0;\r\n    h = bias(0.3, h);\r\n\r\n    return h * 0.7 * vec3(0.0, 1.0, 0.0);\r\n}\r\n\r\nvoid main()\r\n{\r\n    fs_Col = vs_Col;                         // Pass the vertex colors to the fragment shader for interpolation\r\n\r\n    mat3 invTranspose = mat3(u_ModelInvTr);\r\n    fs_Nor = vec4(invTranspose * vec3(vs_Nor), 0);          // Pass the vertex normals to the fragment shader for interpolation.\r\n                                                            // Transform the geometry's normals by the inverse transpose of the\r\n                                                            // model matrix. This is necessary to ensure the normals remain\r\n                                                            // perpendicular to the surface after the surface is transformed by\r\n                                                            // the model matrix.\r\n\r\n\r\n    vec4 modelposition = u_Model * vs_Pos;   // Temporarily store the transformed vertex positions for use below\r\n\r\n    vec3 refPos = modelposition.xyz;\r\n    vec3 refDir = normalize(refPos);\r\n\r\n    vec3 displacement = vec3(0.);\r\n    displacement += getCoarseDisplacement(refPos, refDir);\r\n    displacement += getFineDisplacement(refPos, refDir);\r\n    displacement += getPlumeDisplacement(refPos);\r\n\r\n    fs_Displacement = displacement;\r\n    modelposition.xyz += displacement;\r\n\r\n    fs_Col = vec4(1.0, 0.0, 0.0, 1.0);\r\n\r\n    fs_LightVec = lightPos - modelposition;  // Compute the direction in which the light source lies\r\n\r\n    gl_Position = u_ViewProj * modelposition;// gl_Position is a built-in variable of OpenGL which is\r\n                                             // used to render the final positions of the geometry's vertices\r\n}\r\n\r\n"
+module.exports = "#version 300 es\r\n\r\n//This is a vertex shader. While it is called a \"shader\" due to outdated conventions, this file\r\n//is used to apply matrix transformations to the arrays of vertex data passed to it.\r\n//Since this code is run on your GPU, each vertex is transformed simultaneously.\r\n//If it were run on your CPU, each vertex would have to be processed in a FOR loop, one at a time.\r\n//This simultaneous transformation allows your program to run much faster, especially when rendering\r\n//geometry with millions of vertices.\r\n\r\nuniform mat4 u_Model;       // The matrix that defines the transformation of the\r\n                            // object we're rendering. In this assignment,\r\n                            // this will be the result of traversing your scene graph.\r\n\r\nuniform mat4 u_ModelInvTr;  // The inverse transpose of the model matrix.\r\n                            // This allows us to transform the object's normals properly\r\n                            // if the object has been non-uniformly scaled.\r\n\r\nuniform mat4 u_ViewProj;    // The matrix that defines the camera's transformation.\r\n                            // We've written a static matrix for you to use for HW2,\r\n                            // but in HW3 you'll have to generate one yourself\r\n\r\nuniform float u_Time;  // time in seconds\r\nuniform float u_TimeScale;\r\n\r\nuniform float u_PlumeHeight;\r\n\r\nin vec4 vs_Pos;             // The array of vertex positions passed to the shader\r\n\r\nin vec4 vs_Nor;             // The array of vertex normals passed to the shader\r\n\r\nin vec4 vs_Col;             // The array of vertex colors passed to the shader.\r\n\r\nout vec4 fs_Nor;            // The array of normals that has been transformed by u_ModelInvTr. This is implicitly passed to the fragment shader.\r\nout vec4 fs_LightVec;       // The direction in which our virtual light lies, relative to each vertex. This is implicitly passed to the fragment shader.\r\nout vec4 fs_Col;            // The color of each vertex. This is implicitly passed to the fragment shader.\r\n\r\nout vec3 fs_Displacement;   // displaced vertex\r\n\r\nconst vec4 lightPos = vec4(5, 5, 3, 1); //The position of our virtual light, which is used to compute the shading of\r\n                                        //the geometry in the fragment shader.\r\n\r\nvec3 getCoarseDisplacement(vec3 pos, vec3 dir)\r\n{\r\n    float scaledTime = u_Time * u_TimeScale;\r\n\r\n    float displ = 0.0;\r\n    displ += sin(scaledTime * 2.0 + pos.x * 10.7) * 0.06;\r\n    displ += sin(scaledTime * 0.9 + pos.y * 3.5 + 2.1) * 0.05;\r\n    displ += sin(scaledTime * (-2.5) + pos.z * 12.1 + 0.8) * 0.053;\r\n\r\n    return displ * dir;\r\n}\r\n\r\nvec3 getFineDisplacement(vec3 pos, vec3 dir)\r\n{\r\n    float displ = 0.0;\r\n\r\n    int nOctaves = 4;\r\n\r\n    float freqMult = 1.8;    \r\n    float ampMult = 0.7;\r\n    \r\n    float phaseChange = 0.5;\r\n\r\n    float phase = 0.0;\r\n    float amp = 0.01;\r\n    float posFreq = 50.0;\r\n    float timeFreq = 10.0;\r\n\r\n    for (int i = 0; i < nOctaves; i++)\r\n    {\r\n        displ += amp * sin(phase + 0.1 + pos.x * posFreq * 0.9);\r\n        displ += amp * sin(phase + 0.4 + pos.y * posFreq * 0.7);\r\n        displ += amp * sin(phase + 0.9 + pos.z * posFreq * 1.1);\r\n        \r\n        amp *= ampMult;\r\n        timeFreq *= freqMult;\r\n        posFreq *= freqMult;\r\n        phase += phaseChange;\r\n    }\r\n\r\n    return displ * dir;\r\n}\r\n\r\nfloat triangleWave(float x)\r\n{\r\n    return abs(mod(x, 2.0) - 1.0);\r\n}\r\n\r\nfloat bias(float b, float t)\r\n{\r\n    return pow(t, log(b) / log(0.5f));\r\n}\r\n\r\nvec3 getPlumeDisplacement(vec3 refPos)\r\n{\r\n    if (refPos.y < 1.5)\r\n        return vec3(0.0);\r\n\r\n    \r\n    float scaledTime = u_Time * u_TimeScale;\r\n    float s = 0.0;\r\n    s += triangleWave(0.3 + scaledTime * 0.21 + refPos.x * 48.0 + refPos.z * 53.1);\r\n    s += triangleWave(0.9 + scaledTime * 0.19 + refPos.x * 57.2 - refPos.z * 42.9);\r\n    s += triangleWave(0.2 + scaledTime * 0.1 - refPos.x * 29.9);\r\n    s += triangleWave(1.0 + scaledTime * 0.15 + refPos.z * 61.0);\r\n\r\n    float h = s / 4.0;\r\n    h = bias(0.3, h);\r\n\r\n    return h * u_PlumeHeight * vec3(0.0, 1.0, 0.0);\r\n}\r\n\r\nvoid main()\r\n{\r\n    fs_Col = vs_Col;                         // Pass the vertex colors to the fragment shader for interpolation\r\n\r\n    mat3 invTranspose = mat3(u_ModelInvTr);\r\n    fs_Nor = vec4(invTranspose * vec3(vs_Nor), 0);          // Pass the vertex normals to the fragment shader for interpolation.\r\n                                                            // Transform the geometry's normals by the inverse transpose of the\r\n                                                            // model matrix. This is necessary to ensure the normals remain\r\n                                                            // perpendicular to the surface after the surface is transformed by\r\n                                                            // the model matrix.\r\n\r\n\r\n    vec4 modelposition = u_Model * vs_Pos;   // Temporarily store the transformed vertex positions for use below\r\n\r\n    vec3 refPos = modelposition.xyz;\r\n    vec3 refDir = normalize(refPos);\r\n\r\n    vec3 displacement = vec3(0.);\r\n    displacement += getCoarseDisplacement(refPos, refDir);\r\n    displacement += getFineDisplacement(refPos, refDir);\r\n    displacement += getPlumeDisplacement(refPos);\r\n\r\n    fs_Displacement = displacement;\r\n    modelposition.xyz += displacement;\r\n\r\n    fs_Col = vec4(1.0, 0.0, 0.0, 1.0);\r\n\r\n    fs_LightVec = lightPos - modelposition;  // Compute the direction in which the light source lies\r\n\r\n    gl_Position = u_ViewProj * modelposition;// gl_Position is a built-in variable of OpenGL which is\r\n                                             // used to render the final positions of the geometry's vertices\r\n}\r\n\r\n"
 
 /***/ })
 
@@ -10720,7 +10744,6 @@ var __webpack_exports__ = {};
   \*********************/
 __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var gl_matrix__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! gl-matrix */ "./node_modules/gl-matrix/esm/vec3.js");
-/* harmony import */ var gl_matrix__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! gl-matrix */ "./node_modules/gl-matrix/esm/vec4.js");
 /* harmony import */ var dat_gui__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! dat.gui */ "./node_modules/dat.gui/build/dat.gui.module.js");
 /* harmony import */ var _geometry_Icosphere__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./geometry/Icosphere */ "./src/geometry/Icosphere.ts");
 /* harmony import */ var _geometry_Cube__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./geometry/Cube */ "./src/geometry/Cube.ts");
@@ -10742,9 +10765,10 @@ const Stats = __webpack_require__(/*! stats-js */ "./node_modules/stats-js/build
 const controls = {
     tesselations: 5,
     'Load Scene': loadScene, // A function pointer, essentially
-    colorRed: 1,
-    colorGreen: 0,
-    colorBlue: 0
+    plumeHeight: 0.7,
+    timeScale: 1.0,
+    colorGain: 0.7,
+    reset: function () { this.plumeHeight = 0.7; this.timeScale = 1.0, this.colorGain = 0.7; }
 };
 let icosphere;
 let square;
@@ -10771,9 +10795,10 @@ function main() {
     const gui = new dat_gui__WEBPACK_IMPORTED_MODULE_0__.GUI();
     gui.add(controls, 'tesselations', 0, 8).step(1);
     gui.add(controls, 'Load Scene');
-    gui.add(controls, 'colorRed', 0, 1);
-    gui.add(controls, 'colorGreen', 0, 1);
-    gui.add(controls, 'colorBlue', 0, 1);
+    gui.add(controls, 'timeScale', 0.3, 3.0);
+    gui.add(controls, 'plumeHeight', 0.0, 2.0);
+    gui.add(controls, 'colorGain', 0.1, 0.99);
+    gui.add(controls, 'reset');
     // get canvas and webgl context
     const canvas = document.getElementById('canvas');
     const gl = canvas.getContext('webgl2');
@@ -10789,7 +10814,7 @@ function main() {
     const renderer = new _rendering_gl_OpenGLRenderer__WEBPACK_IMPORTED_MODULE_3__["default"](canvas);
     renderer.setClearColor(0.2, 0.2, 0.2, 1);
     gl.enable(gl.DEPTH_TEST);
-    const lambert = new _rendering_gl_ShaderProgram__WEBPACK_IMPORTED_MODULE_6__["default"]([
+    const shader = new _rendering_gl_ShaderProgram__WEBPACK_IMPORTED_MODULE_6__["default"]([
         new _rendering_gl_ShaderProgram__WEBPACK_IMPORTED_MODULE_6__.Shader(gl.VERTEX_SHADER, __webpack_require__(/*! ./shaders/hw1-custom-vert.glsl */ "./src/shaders/hw1-custom-vert.glsl")),
         new _rendering_gl_ShaderProgram__WEBPACK_IMPORTED_MODULE_6__.Shader(gl.FRAGMENT_SHADER, __webpack_require__(/*! ./shaders/hw1-custom-frag.glsl */ "./src/shaders/hw1-custom-frag.glsl")),
     ]);
@@ -10805,11 +10830,11 @@ function main() {
             icosphere.create();
         }
         // pass color from controls to lambert
-        let geoColor = gl_matrix__WEBPACK_IMPORTED_MODULE_8__.fromValues(controls.colorRed, controls.colorGreen, controls.colorBlue, 1);
-        renderer.render(camera, lambert, performance.now() / 1000.0, [icosphere]);
+        renderer.render(camera, shader, performance.now() / 1000.0, controls.timeScale, controls.plumeHeight, controls.colorGain, [icosphere]);
         stats.end();
         // Tell the browser to call `tick` again whenever it renders a new frame
         requestAnimationFrame(tick);
+        gui.updateDisplay();
     }
     window.addEventListener('resize', function () {
         renderer.setSize(window.innerWidth, window.innerHeight);
