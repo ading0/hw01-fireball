@@ -14,9 +14,10 @@ import ShaderProgram, {Shader} from './rendering/gl/ShaderProgram';
 const controls = {
   tesselations: 5,
   'Load Scene': loadScene, // A function pointer, essentially
-  colorRed: 1,
-  colorGreen: 0,
-  colorBlue: 0
+  plumeHeight: 0.7,
+  timeScale: 1.0,
+  colorGain: 0.7,
+  reset: function() { this.plumeHeight = 0.7; this.timeScale = 1.0, this.colorGain = 0.7; }
 };
 
 let icosphere: Icosphere;
@@ -47,9 +48,10 @@ function main() {
   const gui = new DAT.GUI();
   gui.add(controls, 'tesselations', 0, 8).step(1);
   gui.add(controls, 'Load Scene');
-  gui.add(controls, 'colorRed', 0, 1)
-  gui.add(controls, 'colorGreen', 0, 1)
-  gui.add(controls, 'colorBlue', 0, 1)
+  gui.add(controls, 'timeScale', 0.3, 3.0);
+  gui.add(controls, 'plumeHeight', 0.0, 2.0);
+  gui.add(controls, 'colorGain', 0.1, 0.99);
+  gui.add(controls, 'reset');
 
   // get canvas and webgl context
   const canvas = <HTMLCanvasElement> document.getElementById('canvas');
@@ -70,16 +72,14 @@ function main() {
   renderer.setClearColor(0.2, 0.2, 0.2, 1);
   gl.enable(gl.DEPTH_TEST);
 
-  const lambert = new ShaderProgram([
-    new Shader(gl.VERTEX_SHADER, require('./shaders/custom-vert.glsl')),
-    new Shader(gl.FRAGMENT_SHADER, require('./shaders/noisy-frag.glsl')),
+  const shader = new ShaderProgram([
+    new Shader(gl.VERTEX_SHADER, require('./shaders/hw1-custom-vert.glsl')),
+    new Shader(gl.FRAGMENT_SHADER, require('./shaders/hw1-custom-frag.glsl')),
   ]);
 
 
   // This function will be called every frame
   function tick() {
-    tickNumber += 1;
-
     camera.update();
     stats.begin();
     gl.viewport(0, 0, window.innerWidth, window.innerHeight);
@@ -92,13 +92,15 @@ function main() {
     }
 
     // pass color from controls to lambert
-    let geoColor: vec4 = vec4.fromValues(controls.colorRed, controls.colorGreen, controls.colorBlue, 1);
+    
 
-    renderer.render(camera, lambert, geoColor, tickNumber, [icosphere, cube]);
+    renderer.render(camera, shader, performance.now() / 1000.0, controls.timeScale, controls.plumeHeight, controls.colorGain, [icosphere]);
     stats.end();
 
     // Tell the browser to call `tick` again whenever it renders a new frame
     requestAnimationFrame(tick);
+
+    gui.updateDisplay();
   }
 
   window.addEventListener('resize', function() {

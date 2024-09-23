@@ -28,8 +28,10 @@ class ShaderProgram {
   unifModel: WebGLUniformLocation;
   unifModelInvTr: WebGLUniformLocation;
   unifViewProj: WebGLUniformLocation;
-  unifColor: WebGLUniformLocation;
-  unifTick: WebGLUniformLocation
+  unifTime: WebGLUniformLocation
+  unifPlumeHeight: WebGLUniformLocation
+  unifColorGain: WebGLUniformLocation
+  unifTimeScale: WebGLUniformLocation
 
   constructor(shaders: Array<Shader>) {
     this.prog = gl.createProgram();
@@ -48,8 +50,10 @@ class ShaderProgram {
     this.unifModel      = gl.getUniformLocation(this.prog, "u_Model");
     this.unifModelInvTr = gl.getUniformLocation(this.prog, "u_ModelInvTr");
     this.unifViewProj   = gl.getUniformLocation(this.prog, "u_ViewProj");
-    this.unifColor      = gl.getUniformLocation(this.prog, "u_Color");
-    this.unifTick       = gl.getUniformLocation(this.prog, "u_Tick");
+    this.unifTime       = gl.getUniformLocation(this.prog, "u_Time");
+    this.unifTimeScale = gl.getUniformLocation(this.prog, "u_TimeScale");
+    this.unifPlumeHeight = gl.getUniformLocation(this.prog, "u_PlumeHeight");
+    this.unifColorGain = gl.getUniformLocation(this.prog, "u_ColorGain");
   }
 
   use() {
@@ -80,17 +84,31 @@ class ShaderProgram {
     }
   }
 
-  setGeometryColor(color: vec4) {
+  setTime(time: number) {
     this.use();
-    if (this.unifColor !== -1) {
-      gl.uniform4fv(this.unifColor, color);
+    if (this.unifTime !== -1) {
+      gl.uniform1f(this.unifTime, time);
     }
   }
 
-  setTick(tick: number) {
+  setTimeScale(timeScale: number) {
     this.use();
-    if (this.unifTick !== -1) {
-      gl.uniform1f(this.unifTick, tick);
+    if (this.unifTimeScale !== -1) {
+      gl.uniform1f(this.unifTimeScale, timeScale);
+    }
+  }
+  
+  setColorGain(gain: number) {
+    this.use();
+    if (this.unifColorGain !== -1) {
+      gl.uniform1f(this.unifColorGain, gain);
+    }
+  }
+
+  setPlumeHeight(h: number) {
+    this.use();
+    if (this.unifPlumeHeight !== -1) {
+      gl.uniform1f(this.unifPlumeHeight, h);
     }
   }
 
